@@ -29,7 +29,7 @@ Then ask your agent:
 
 ## What you get
 
-The agent gathers context from your code, PRDs, or billing screenshots, fetches live GPU and API prices from vendor pages, runs deterministic VRAM and dollar math via `calc.py`, sweeps a 6-cell scenario matrix, and writes a markdown report with cited sources and confidence-tagged assumptions.
+The agent gathers context from your code, PRDs, or billing screenshots, fetches live GPU and API prices from vendor pages, runs deterministic VRAM and dollar math via `scripts/calc.py`, and writes a short markdown report with cited sources.
 
 ### Example output
 
@@ -54,12 +54,11 @@ flowchart LR
   Agent -->|"markdown report"| User
 ```
 
-1. **Context** — scan user message, open files, attachments for volume, model, traffic shape.
-2. **Live data** — fetch GPU prices (Runpod/Lambda/Modal), API prices (models.dev or vendor page), quality (lmarena.ai).
-3. **Clarify** — ask up to 2 questions per round for low-confidence high-leverage fields.
-4. **Engine** — call `python3 scripts/calc.py inference` or `finetune` with JSON on stdin.
-5. **Scenario matrix** — 3 traffic patterns × 2 quality bars = 6 invocations.
-6. **Report** — headline, matrix, derivation, assumptions table, flip conditions, cited URLs.
+1. **Extract** — scan user message, open files, attachments for volume, model, traffic shape.
+2. **Fetch** — live GPU prices (Runpod/Lambda/Modal), API prices (models.dev), quality (lmarena.ai).
+3. **Clarify** — ask if volume, model, or spend are missing.
+4. **Calculate** — `python3 scripts/calc.py inference` or `finetune` with JSON on stdin.
+5. **Report** — verdict, cost comparison, assumptions with sources, what would flip the answer.
 
 ## Why a skill, not a website
 
@@ -69,13 +68,13 @@ The skill exists because most users are already inside an agent harness when the
 
 ## Files
 
-- `SKILL.md` — agent instructions (phases, hard rules, failure modes)
-- `calc.py` — deterministic math for VRAM, billed hours, FT capex
+- `SKILL.md` — agent instructions (workflow + rules)
+- `scripts/calc.py` — deterministic math for VRAM, billed hours, FT capex (stdlib only)
 - `references/GPU_SPECS.md` — static physical specs (VRAM, BF16 TFLOPS)
-- `references/INPUTS.md` — input contract + defaults
+- `references/INPUTS.md` — input contract
 - `references/ASSUMPTIONS.md` — pointer to canonical assumptions in sister repo
-- `examples/openai-bill-too-high.md` — full sample transcript
-- `tests/test_calc.py` — smoke tests
+- `examples/openai-bill-too-high.md` — sample transcript
+- `tests/test_calc.py` — unit tests
 - `.github/workflows/test.yml` — CI
 
 ## Requirements
