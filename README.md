@@ -124,3 +124,7 @@ Issues and PRs welcome — new GPU vendors, formula calibration, prompt tweaks. 
 ## License
 
 [MIT](LICENSE).
+
+---
+
+Built collaboratively with Claude (Anthropic), running in Cursor. The honest story of how this skill came together — including the stress-test bugs, the over-engineered first draft, and the simplification pass — is in [NOTES.md](NOTES.md).
