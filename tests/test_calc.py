@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-CALC = REPO_ROOT / "calc.py"
+CALC = REPO_ROOT / "scripts" / "calc.py"
 
 
 def run(subcmd, payload):

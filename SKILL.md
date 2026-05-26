@@ -33,7 +33,7 @@ training, non-LLM workloads).
 ## Hard rules
 
 - **Never compute VRAM, GPU-hours, or dollar costs in your head.** Always call
-  `python3 calc.py` with JSON on stdin and parse JSON from stdout.
+  `python3 scripts/calc.py` with JSON on stdin and parse JSON from stdout.
 - **Never invent GPU prices.** Fetch from vendor pages (Runpod, Lambda, Modal,
   Together, Fireworks, DeepInfra) and cite the URL + fetch timestamp in the
   report.
@@ -232,13 +232,13 @@ Run the deterministic script from the repo root. Never substitute mental math.
 ### Inference
 
 ```bash
-echo '<json>' | python3 calc.py inference
+echo '<json>' | python3 scripts/calc.py inference
 ```
 
 Example payload (70B INT4, business traffic, H100):
 
 ```bash
-echo '{"params_b":70,"active_params_b":70,"quant":"int4","queries_per_week":1000000,"avg_tokens_per_query":800,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989}}' | python3 calc.py inference
+echo '{"params_b":70,"active_params_b":70,"quant":"int4","queries_per_week":1000000,"avg_tokens_per_query":800,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989}}' | python3 scripts/calc.py inference
 ```
 
 Expected output keys: `fits`, `vram_needed_gb`, `vram_headroom_gb`,
@@ -254,13 +254,13 @@ Expected output keys: `fits`, `vram_needed_gb`, `vram_headroom_gb`,
 ### Fine-tune
 
 ```bash
-echo '<json>' | python3 calc.py finetune
+echo '<json>' | python3 scripts/calc.py finetune
 ```
 
 Example payload (QLoRA on 65B, Guanaco-scale dataset):
 
 ```bash
-echo '{"active_params_b":65,"total_params_b":65,"method":"qlora","num_examples":10000,"tokens_per_example":500,"epochs":3,"experiments_multiplier":1.0,"prep_cost_usd":0,"gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989,"gpus_per_node":8}}' | python3 calc.py finetune
+echo '{"active_params_b":65,"total_params_b":65,"method":"qlora","num_examples":10000,"tokens_per_example":500,"epochs":3,"experiments_multiplier":1.0,"prep_cost_usd":0,"gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989,"gpus_per_node":8}}' | python3 scripts/calc.py finetune
 ```
 
 Expected output keys: `total_tokens`, `method_flops`, `effective_flops_per_sec`,
@@ -309,7 +309,7 @@ engine invocations (inference path) unless the user only asked about fine-tuning
 For each of the 6 cells, call:
 
 ```bash
-echo '<json with this pattern + params>' | python3 calc.py inference
+echo '<json with this pattern + params>' | python3 scripts/calc.py inference
 ```
 
 Present results as a markdown table:
@@ -419,7 +419,7 @@ If Phase 1 yields no volume, no model, and no cost signal:
 ### `calc.py` missing or errors on exit 1
 
 Report the error JSON to the user. Do not fall back to manual calculation.
-Suggest verifying `python3 calc.py` exists and Python ≥ 3.10 is available.
+Suggest verifying `python3 scripts/calc.py` exists and Python ≥ 3.10 is available.
 
 ### Quality Elo gap > 100 points
 
