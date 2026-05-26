@@ -8,6 +8,8 @@
 
 The agent reads your code, PRDs, or billing screenshots; fetches live GPU and API prices; runs deterministic VRAM and dollar math via `scripts/calc.py`; and writes a short markdown report with cited sources.
 
+> Prefer a web UI? Try the sister calculator: **[should-i-self-host-llm](https://artvandelay.github.io/should-i-self-host-llm/)** — same math, manual inputs, no install. This skill is for when you're already inside an agent.
+
 ```mermaid
 flowchart LR
   User["user prompt + context"] --> Agent
@@ -98,7 +100,7 @@ tests/test_calc.py                unit tests
 
 ## Related
 
-- [should-i-self-host-llm](https://github.com/artvandelay/should-i-self-host-llm) — the math lives here; also hosts a [web calculator](https://artvandelay.github.io/should-i-self-host-llm/) for manual one-off lookups.
+- [should-i-self-host-llm](https://github.com/artvandelay/should-i-self-host-llm) — the canonical math + the [web calculator](https://artvandelay.github.io/should-i-self-host-llm/).
 
 ## Contributing
 
