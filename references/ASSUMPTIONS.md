@@ -17,3 +17,5 @@ fetch timestamp. Do not paraphrase from memory.
 Why a stub: the calculator repo owns the math; this skill owns the agent
 harness. Keeping a single source prevents drift. See the README's
 "Why a skill, not a website" section for the full rationale.
+
+<!-- Last reviewed: PR3 -->

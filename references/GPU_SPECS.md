@@ -15,3 +15,4 @@ src/ft/ASSUMPTIONS.md §3 assumption 8 and 19.
 | L40S          | 48  | 362  | 8 | Ada inference-leaning |
 | L4            | 24  | 121  | 8 | Ada, low-power inference |
 | MI300X        | 192 | 1307 | 8 | AMD CDNA3 |
+| RTX 4090      | 24  | 165  | 1 | Consumer card; no NVLink; not suitable for >24GB models even at int4 |
