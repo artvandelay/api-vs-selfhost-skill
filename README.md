@@ -6,14 +6,91 @@
 
 ## Install
 
+A skill is just a folder with a `SKILL.md` file inside it. Your agent watches a specific directory and picks up skills it finds there. Pick your agent below.
+
+<details open>
+<summary><b>Claude Code</b></summary>
+
+1. **Make sure the skills directory exists.** Run this in your terminal once:
+   ```bash
+   mkdir -p ~/.claude/skills
+   ```
+2. **Clone the skill into it:**
+   ```bash
+   git clone https://github.com/artvandelay/api-vs-selfhost-skill \
+     ~/.claude/skills/api-vs-selfhost-skill
+   ```
+3. **Restart Claude Code** (fully quit with `Cmd-Q` on macOS — closing the window isn't enough). New top-level skill directories need a restart; edits to existing ones don't.
+4. **Verify:** in a Claude Code session, ask `what skills do you have?` — `api-vs-selfhost-skill` should appear.
+
+Update later with `cd ~/.claude/skills/api-vs-selfhost-skill && git pull`.
+
+</details>
+
+<details>
+<summary><b>Cursor</b></summary>
+
+1. **Make sure the skills directory exists:**
+   ```bash
+   mkdir -p ~/.cursor/skills
+   ```
+2. **Clone the skill into it:**
+   ```bash
+   git clone https://github.com/artvandelay/api-vs-selfhost-skill \
+     ~/.cursor/skills/api-vs-selfhost-skill
+   ```
+3. **Restart Cursor.**
+4. **Verify:** open Settings (`Cmd-Shift-J`) → **Rules**. You should see `api-vs-selfhost-skill` listed under *Agent Decides*.
+
+Notes:
+- Don't use `npx skills add ...` for this skill — at the time of writing Cursor's skill discovery is flaky with symlinks. A plain `git clone` is the reliable path.
+- Project-only install: clone into `.cursor/skills/api-vs-selfhost-skill` inside your repo instead.
+
+Update later with `cd ~/.cursor/skills/api-vs-selfhost-skill && git pull`.
+
+</details>
+
+<details>
+<summary><b>Codex CLI</b></summary>
+
+Codex uses `~/.agents/skills/` (note: `.agents`, not `.codex`).
+
+1. **Make sure the skills directory exists:**
+   ```bash
+   mkdir -p ~/.agents/skills
+   ```
+2. **Clone the skill into it:**
+   ```bash
+   git clone https://github.com/artvandelay/api-vs-selfhost-skill \
+     ~/.agents/skills/api-vs-selfhost-skill
+   ```
+3. **Restart Codex.**
+4. **Verify:** type `/skills` in a Codex session — `api-vs-selfhost-skill` should appear. You can also invoke it explicitly with `$api-vs-selfhost-skill`.
+
+Project-only install: clone into `.agents/skills/api-vs-selfhost-skill` inside your repo.
+
+Update later with `cd ~/.agents/skills/api-vs-selfhost-skill && git pull`.
+
+</details>
+
+<details>
+<summary><b>Other agents (Gemini CLI, Antigravity, custom harness)</b></summary>
+
+Any harness that supports the `SKILL.md` convention will work. Clone the repo somewhere, then point your harness at the folder containing `SKILL.md`. Check your tool's docs for its skills directory.
+
 ```bash
-# Claude Code: ~/.claude/skills/   |   Cursor: ~/.cursor/skills/   |   anywhere else: just clone
-git clone https://github.com/artvandelay/api-vs-selfhost-skill ~/.claude/skills/api-vs-selfhost-skill
+git clone https://github.com/artvandelay/api-vs-selfhost-skill
 ```
 
-Update with `git pull` in that directory. Then ask your agent:
+</details>
+
+### Try it
+
+In a fresh agent session, paste:
 
 > "Our OpenAI bill is killing us. We do ~1M queries/week at ~1.5k tokens each on GPT-5.4. Should we self-host?"
+
+The agent should fetch live GPU prices, run `scripts/calc.py`, and return a short report with cited sources.
 
 ## What you get
 
