@@ -23,7 +23,7 @@ jobs:
 
       - name: Smoke test calc.py CLI
         run: |
-          echo '{"params_b":70,"active_params_b":70,"quant":"int4","queries_per_week":1000000,"avg_tokens_per_query":800,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989}}' | python3 calc.py inference
+          echo '{"params_b":70,"active_params_b":70,"quant":"int4","queries_per_week":1000000,"avg_tokens_per_query":800,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989}}' | python3 scripts/calc.py inference
 
       - name: Run unittest suite
         run: python3 -m unittest discover tests/ -v

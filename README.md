@@ -49,7 +49,7 @@ flowchart LR
   User["User prompt + attached context"] --> Agent
   Agent["Agent reads SKILL.md"] -->|"WebFetch"| Web["Runpod / OpenAI / lmarena"]
   Agent -->|"WebFetch"| AssumeRepo["sister repo ASSUMPTIONS.md"]
-  Agent -->|"python3 calc.py inference|finetune"| Calc["calc.py (stdlib only)"]
+  Agent -->|"python3 scripts/calc.py inference|finetune"| Calc["calc.py (stdlib only)"]
   Calc -->|"JSON result + derivation"| Agent
   Agent -->|"markdown report"| User
 ```
@@ -57,7 +57,7 @@ flowchart LR
 1. **Context** — scan user message, open files, attachments for volume, model, traffic shape.
 2. **Live data** — fetch GPU prices (Runpod/Lambda/Modal), API prices (models.dev or vendor page), quality (lmarena.ai).
 3. **Clarify** — ask up to 2 questions per round for low-confidence high-leverage fields.
-4. **Engine** — call `python3 calc.py inference` or `finetune` with JSON on stdin.
+4. **Engine** — call `python3 scripts/calc.py inference` or `finetune` with JSON on stdin.
 5. **Scenario matrix** — 3 traffic patterns × 2 quality bars = 6 invocations.
 6. **Report** — headline, matrix, derivation, assumptions table, flip conditions, cited URLs.
 
