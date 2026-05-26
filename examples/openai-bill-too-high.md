@@ -45,7 +45,7 @@ Extracted from the prompt:
 ## Agent (Phase 4: engine calls)
 
 ```bash
-echo '{"params_b":70,"active_params_b":70,"quant":"int4","queries_per_week":350000,"avg_tokens_per_query":1500,"api_cost_per_query_usd":0.01125,"traffic_pattern":"business","gpu":{"name":"H100 PCIe 80GB","vram_gb":80,"usd_per_hr":2.89,"bf16_tflops":989}}' | python3 calc.py inference
+echo '{"params_b":70,"active_params_b":70,"quant":"int4","queries_per_week":350000,"avg_tokens_per_query":1500,"api_cost_per_query_usd":0.01125,"traffic_pattern":"business","gpu":{"name":"H100 PCIe 80GB","vram_gb":80,"usd_per_hr":2.89,"bf16_tflops":989}}' | python3 scripts/calc.py inference
 ```
 
 ```json
