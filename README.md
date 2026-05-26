@@ -10,15 +10,6 @@ The agent reads your code, PRDs, or billing screenshots; fetches live GPU and AP
 
 > Prefer a web UI? Try the sister calculator: **[should-i-self-host-llm](https://artvandelay.github.io/should-i-self-host-llm/)** — same math, manual inputs, no install. This skill is for when you're already inside an agent.
 
-```mermaid
-flowchart LR
-  User["user prompt + context"] --> Agent
-  Agent["agent reads SKILL.md"] -->|WebFetch| Web["runpod.io / models.dev / lmarena.ai"]
-  Agent -->|"python3 scripts/calc.py"| Calc["calc.py (stdlib only)"]
-  Calc -->|JSON + derivation| Agent
-  Agent -->|markdown report| User
-```
-
 ## Install
 
 | Agent | Skills directory |
@@ -55,6 +46,15 @@ The agent will fetch live prices, run the engine, and return something like:
 Full transcript: [`examples/openai-bill-too-high.md`](examples/openai-bill-too-high.md).
 
 ## How it works
+
+```mermaid
+flowchart LR
+  U["user"] --> A["agent"]
+  A -->|WebFetch| W["live prices"]
+  A -->|stdin JSON| C["calc.py"]
+  C -->|stdout JSON| A
+  A -->|report| U
+```
 
 1. **Extract** — scan the user message, open files, and attachments for volume, model, traffic shape.
 2. **Fetch** — live GPU prices (Runpod / Lambda / Modal), API prices (models.dev), quality Elo (lmarena.ai).
@@ -98,9 +98,15 @@ tests/test_calc.py                unit tests
 - Python 3.10+ (stdlib only — no pip)
 - An agent harness with shell execution + a web-fetch tool (Claude Code, Cursor, Codex CLI, Gemini CLI, Antigravity, etc.)
 
-## Related
+## Credits
 
-- [should-i-self-host-llm](https://github.com/artvandelay/should-i-self-host-llm) — the canonical math + the [web calculator](https://artvandelay.github.io/should-i-self-host-llm/).
+This skill stands on:
+
+- **[should-i-self-host-llm](https://github.com/artvandelay/should-i-self-host-llm)** — sister repo. Canonical math, calibration anchors, and the [web calculator](https://artvandelay.github.io/should-i-self-host-llm/). All formula changes land there first.
+- **[models.dev](https://models.dev/)** — open catalog of LLM API pricing and capabilities. The skill fetches per-token prices from here.
+- **[Chatbot Arena (lmarena.ai)](https://lmarena.ai/)** — Elo leaderboard for quality comparison between API and open-weight models.
+- **GPU vendors** — [Runpod](https://www.runpod.io/pricing), [Lambda](https://lambdalabs.com/service/gpu-cloud), [Modal](https://modal.com/pricing) for live `$/hr` data.
+- **["Code as Agent Harness"](https://arxiv.org/abs/2605.18747)** — the design pattern this skill instantiates: deterministic code as the verifiable substrate under a flexible LLM front end.
 
 ## Contributing
 
