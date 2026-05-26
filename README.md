@@ -3,8 +3,17 @@
 > Decide API-vs-self-host LLM economics and fine-tuning ROI from inside Claude Code, Cursor, Codex, or any agent harness with a shell + a web-fetch tool.
 
 [![tests](https://github.com/artvandelay/api-vs-selfhost-skill/actions/workflows/test.yml/badge.svg)](https://github.com/artvandelay/api-vs-selfhost-skill/actions/workflows/test.yml)
-[![python](https://img.shields.io/badge/python-3.10+-blue.svg)](#requirements)
 [![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![python](https://img.shields.io/badge/python-3.10+-blue.svg)](#requirements)
+[![Agent Skills spec](https://img.shields.io/badge/Agent_Skills-compatible-7c3aed.svg)](https://agentskills.io/)
+[![GitHub stars](https://img.shields.io/github/stars/artvandelay/api-vs-selfhost-skill?style=flat&color=yellow)](https://github.com/artvandelay/api-vs-selfhost-skill/stargazers)
+
+**Works with**
+[![Claude Code](https://img.shields.io/badge/Claude_Code-D97757?logo=anthropic&logoColor=white)](https://docs.claude.com/en/docs/claude-code/skills)
+[![Cursor](https://img.shields.io/badge/Cursor-000000?logo=cursor&logoColor=white)](https://cursor.com/docs/skills)
+[![Codex CLI](https://img.shields.io/badge/Codex_CLI-412991?logo=openai&logoColor=white)](https://developers.openai.com/codex/concepts/customization)
+[![Gemini CLI](https://img.shields.io/badge/Gemini_CLI-4285F4?logo=google&logoColor=white)](https://github.com/google-gemini/gemini-cli)
+[![Antigravity](https://img.shields.io/badge/Antigravity-1c1c1c?logo=google&logoColor=white)](https://antigravity.dev/)
 
 The agent reads your code, PRDs, or billing screenshots; fetches live GPU and API prices; runs deterministic VRAM and dollar math via `scripts/calc.py`; and writes a short markdown report with cited sources.
 
