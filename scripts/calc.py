@@ -11,6 +11,7 @@ Exit codes: 0 on success, 2 on bad input (with `{"error": "..."}` on stdout),
 """
 
 import json
+import math
 import sys
 
 FLOPS_PER_TOKEN_PER_PARAM = 6
@@ -28,29 +29,96 @@ VRAM_OVERHEAD_FACTOR = 1.2
 TRAFFIC_PATTERN_HOURS = {
     "uniform": 168,
     "business": 50,
+    "business_hours": 50,
     "bursty": 20,
     "always_warm": 168,
 }
 
+ALLOWED_TRAFFIC_PATTERNS = {
+    "always_warm",
+    "business_hours",
+    "business",
+    "bursty",
+    "cold_per_query",
+    "uniform",
+}
+
+
+def _exit_bad(message, field):
+    print(json.dumps({"error": message, "field": field}))
+    sys.exit(2)
+
 
 def _require(d, key):
-    if key not in d:
-        raise KeyError(key)
+    if key not in d or d[key] is None:
+        _exit_bad(f"missing field {key}", key)
     return d[key]
 
 
+def _require_positive(d, key):
+    value = _require(d, key)
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(value)
+        or value <= 0
+    ):
+        _exit_bad(f"{key} must be a positive finite number", key)
+    return float(value)
+
+
+def _require_numeric(d, key):
+    value = _require(d, key)
+    if (
+        not isinstance(value, (int, float))
+        or isinstance(value, bool)
+        or not math.isfinite(value)
+    ):
+        _exit_bad(f"{key} must be a finite number", key)
+    return float(value)
+
+
+def _require_non_negative(d, key):
+    value = _require_numeric(d, key)
+    if value < 0:
+        _exit_bad(f"{key} must be a non-negative finite number", key)
+    return value
+
+
 def compute_inference(inp: dict) -> dict:
-    params_b = _require(inp, "params_b")
+    warnings = []
+
+    params_b = _require_positive(inp, "params_b")
     quant = _require(inp, "quant")
-    queries_per_week = _require(inp, "queries_per_week")
-    api_cost_per_query_usd = _require(inp, "api_cost_per_query_usd")
+    queries_per_week = _require_positive(inp, "queries_per_week")
+    api_cost_per_query_usd = _require_positive(inp, "api_cost_per_query_usd")
     traffic_pattern = _require(inp, "traffic_pattern")
     gpu = _require(inp, "gpu")
-    gpu_vram_gb = _require(gpu, "vram_gb")
-    gpu_usd_per_hr = _require(gpu, "usd_per_hr")
+    if not isinstance(gpu, dict):
+        _exit_bad("gpu must be an object", "gpu")
+    gpu_vram_gb = _require_positive(gpu, "vram_gb")
+    gpu_usd_per_hr = _require_positive(gpu, "usd_per_hr")
+
+    if inp.get("active_params_b") is not None:
+        active_params_b = inp.get("active_params_b")
+        total_params_b = inp.get("total_params_b", params_b)
+        if (
+            not isinstance(active_params_b, (int, float))
+            or isinstance(active_params_b, bool)
+            or not math.isfinite(active_params_b)
+        ):
+            _exit_bad("active_params_b must be a finite number", "active_params_b")
+        if float(active_params_b) > float(total_params_b):
+            _exit_bad("active_params_b cannot exceed total_params_b", "active_params_b")
 
     if quant not in BYTES_PER_PARAM_INFERENCE:
         raise ValueError(f"unknown quant {quant}")
+
+    if traffic_pattern not in ALLOWED_TRAFFIC_PATTERNS:
+        _exit_bad(
+            "traffic_pattern must be one of always_warm|business_hours|business|bursty|cold_per_query|uniform",
+            "traffic_pattern",
+        )
 
     bytes_per_param = BYTES_PER_PARAM_INFERENCE[quant]
     vram_needed_gb = params_b * bytes_per_param * VRAM_OVERHEAD_FACTOR
@@ -60,7 +128,7 @@ def compute_inference(inp: dict) -> dict:
     if traffic_pattern in TRAFFIC_PATTERN_HOURS:
         billed_hours_per_week = TRAFFIC_PATTERN_HOURS[traffic_pattern]
     elif traffic_pattern == "cold_per_query":
-        billed_hours_per_week = inp.get("hot_hours_per_week", 0)
+        billed_hours_per_week = _require_positive(inp, "hot_hours_per_week")
     else:
         raise ValueError(f"unknown traffic_pattern {traffic_pattern}")
 
@@ -70,8 +138,31 @@ def compute_inference(inp: dict) -> dict:
     savings_pct = (weekly_savings_usd / api_weekly_usd * 100.0) if api_weekly_usd > 0 else 0.0
 
     if not fits:
-        verdict = "infeasible"
-    elif selfhost_weekly_usd < api_weekly_usd:
+        warnings.append(
+            f"Self-host infeasible: needs {vram_needed_gb:.1f} GB, GPU has {gpu_vram_gb} GB."
+        )
+        derivation = [
+            {"step": "vram_needed_gb", "formula": "params_b * bytes_per_param[quant] * 1.2", "value": vram_needed_gb},
+            {"step": "billed_hours", "formula": "pattern -> hours/week", "value": billed_hours_per_week},
+            {"step": "selfhost_weekly_usd", "formula": "billed_hours * usd_per_hr", "value": 0},
+            {"step": "api_weekly_usd", "formula": "queries_per_week * api_cost_per_query_usd", "value": api_weekly_usd},
+        ]
+        return {
+            "fits": False,
+            "infeasible": True,
+            "vram_needed_gb": round(vram_needed_gb, 4),
+            "vram_headroom_gb": round(vram_headroom_gb, 4),
+            "billed_hours_per_week": billed_hours_per_week,
+            "selfhost_weekly_usd": 0,
+            "api_weekly_usd": round(api_weekly_usd, 4),
+            "weekly_savings_usd": 0,
+            "savings_pct": 0,
+            "verdict": "infeasible",
+            "warnings": warnings,
+            "derivation": derivation,
+        }
+
+    if selfhost_weekly_usd < api_weekly_usd:
         verdict = "selfhost_wins"
     else:
         verdict = "api_wins"
@@ -85,6 +176,7 @@ def compute_inference(inp: dict) -> dict:
 
     return {
         "fits": fits,
+        "infeasible": False,
         "vram_needed_gb": round(vram_needed_gb, 4),
         "vram_headroom_gb": round(vram_headroom_gb, 4),
         "billed_hours_per_week": billed_hours_per_week,
@@ -93,24 +185,40 @@ def compute_inference(inp: dict) -> dict:
         "weekly_savings_usd": round(weekly_savings_usd, 4),
         "savings_pct": round(savings_pct, 4),
         "verdict": verdict,
+        "warnings": warnings,
         "derivation": derivation,
     }
 
 
 def compute_finetune(inp: dict) -> dict:
-    active_params_b = _require(inp, "active_params_b")
-    total_params_b = _require(inp, "total_params_b")
+    warnings = []
+
+    active_params_b = _require_positive(inp, "active_params_b")
+    total_params_b = _require_positive(inp, "total_params_b")
+    if active_params_b > total_params_b:
+        _exit_bad("active_params_b cannot exceed total_params_b", "active_params_b")
+
     method = _require(inp, "method")
-    num_examples = _require(inp, "num_examples")
-    tokens_per_example = _require(inp, "tokens_per_example")
-    epochs = _require(inp, "epochs")
-    experiments_multiplier_in = _require(inp, "experiments_multiplier")
-    prep_cost_usd = _require(inp, "prep_cost_usd")
+    num_examples = _require_positive(inp, "num_examples")
+    tokens_per_example = _require_positive(inp, "tokens_per_example")
+    epochs = _require_positive(inp, "epochs")
+    prep_cost_usd = _require_non_negative(inp, "prep_cost_usd")
     gpu = _require(inp, "gpu")
-    gpu_vram_gb = _require(gpu, "vram_gb")
-    gpu_usd_per_hr = _require(gpu, "usd_per_hr")
-    gpu_bf16_tflops = _require(gpu, "bf16_tflops")
-    gpus_per_node = gpu.get("gpus_per_node", 8)
+    if not isinstance(gpu, dict):
+        _exit_bad("gpu must be an object", "gpu")
+    gpu_vram_gb = _require_positive(gpu, "vram_gb")
+    gpu_usd_per_hr = _require_positive(gpu, "usd_per_hr")
+    gpu_bf16_tflops = _require_positive(gpu, "bf16_tflops")
+
+    if "gpus_per_node" in gpu:
+        gpus_per_node = _require_positive(gpu, "gpus_per_node")
+    else:
+        gpus_per_node = 8
+
+    if "experiments_multiplier" in inp:
+        experiments_multiplier_in = _require_numeric(inp, "experiments_multiplier")
+    else:
+        experiments_multiplier_in = 1.0
 
     if method not in FT_METHODS:
         raise ValueError(f"unknown method {method}")
@@ -140,7 +248,14 @@ def compute_finetune(inp: dict) -> dict:
 
     hours_with_cluster = single_gpu_hours * cluster_overhead
     single_run_gpu_cost_usd = hours_with_cluster * gpu_usd_per_hr
-    experiments_multiplier = max(1.0, experiments_multiplier_in)
+
+    experiments_multiplier = experiments_multiplier_in
+    if experiments_multiplier < 1.0:
+        warnings.append(
+            f"experiments_multiplier {experiments_multiplier_in} clamped to 1.0"
+        )
+        experiments_multiplier = 1.0
+
     gpu_cost_total_usd = single_run_gpu_cost_usd * experiments_multiplier
     total_capex_usd = gpu_cost_total_usd + prep_cost_usd
 
@@ -171,36 +286,34 @@ def compute_finetune(inp: dict) -> dict:
         "gpu_cost_total_usd": round(gpu_cost_total_usd, 4),
         "prep_cost_usd": prep_cost_usd,
         "total_capex_usd": round(total_capex_usd, 4),
+        "warnings": warnings,
         "derivation": derivation,
     }
 
 
 def main():
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "missing subcommand"}))
+        print(json.dumps({"error": "missing subcommand", "field": None}))
         sys.exit(2)
     sub = sys.argv[1]
     if sub not in ("inference", "finetune"):
-        print(json.dumps({"error": f"unknown subcommand {sub}"}))
+        print(json.dumps({"error": f"unknown subcommand {sub}", "field": None}))
         sys.exit(2)
     try:
         inp = json.load(sys.stdin)
     except json.JSONDecodeError as e:
-        print(json.dumps({"error": f"invalid JSON: {e}"}))
+        print(json.dumps({"error": f"invalid JSON: {e}", "field": None}))
         sys.exit(2)
     try:
         if sub == "inference":
             result = compute_inference(inp)
         else:
             result = compute_finetune(inp)
-    except KeyError as e:
-        print(json.dumps({"error": f"missing field {e.args[0]}"}))
-        sys.exit(2)
     except ValueError as e:
-        print(json.dumps({"error": str(e)}))
+        print(json.dumps({"error": str(e), "field": None}))
         sys.exit(2)
     except Exception as e:
-        print(json.dumps({"error": str(e)}))
+        print(json.dumps({"error": str(e), "field": None}))
         sys.exit(1)
     print(json.dumps(result))
     sys.exit(0)
