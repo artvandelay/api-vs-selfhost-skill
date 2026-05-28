@@ -21,20 +21,43 @@ Not in an agent? **[Use the web calculator →](https://artvandelay.github.io/sh
 
 ## Install
 
-| Agent | Skills directory |
-|---|---|
-| Claude Code | `~/.claude/skills/` |
-| Cursor | `~/.cursor/skills/` |
-| Codex CLI | `~/.agents/skills/` |
-| Project-scoped (any of the above) | `.claude/skills/` · `.cursor/skills/` · `.agents/skills/` |
+A skill is just a folder with a `SKILL.md`, placed where your agent looks for skills. Install = clone this repo into that folder. Requires **Python 3.10+** (standard library only — nothing to `pip install`).
+
+Pick the directory for your agent and clone:
 
 ```bash
-# pick the path that matches your agent
+# Claude Code (global, all projects)
 git clone https://github.com/artvandelay/api-vs-selfhost-skill \
   ~/.claude/skills/api-vs-selfhost-skill
+
+# Cursor (global)
+git clone https://github.com/artvandelay/api-vs-selfhost-skill \
+  ~/.cursor/skills/api-vs-selfhost-skill
+
+# Codex CLI (global)
+git clone https://github.com/artvandelay/api-vs-selfhost-skill \
+  ~/.agents/skills/api-vs-selfhost-skill
 ```
 
-Restart your agent. Verify with `/skills` (Codex), Settings → Rules (Cursor), or by asking the agent what skills it has (Claude Code). Update later with `git pull` inside the cloned directory.
+Where each agent looks for skills:
+
+| Agent | Global (all projects) | Project-scoped (this repo only) |
+|---|---|---|
+| Claude Code | `~/.claude/skills/` | `.claude/skills/` |
+| Cursor | `~/.cursor/skills/` | `.cursor/skills/` |
+| Codex CLI | `~/.agents/skills/` *(older versions: `~/.codex/skills/`)* | `.agents/skills/` |
+
+> **Codex note:** global `~/.agents/skills/` support is recent. If your agent doesn't pick the skill up, you're likely on an older Codex — clone into `~/.codex/skills/api-vs-selfhost-skill` instead, or use the project-scoped `.agents/skills/` path. ([docs](https://developers.openai.com/codex/skills/))
+
+**Then restart your agent and confirm it loaded:**
+
+- **Claude Code** — ask: *"what skills do you have?"* (it should list `api-vs-selfhost-skill`)
+- **Cursor** — Settings → Rules & Skills
+- **Codex CLI** — run `/skills`, or type `$` to see the skill picker
+
+**Update later:** `cd` into the cloned folder and `git pull`.
+
+Prefer a project-scoped install (so the skill travels with one repo and your teammates get it on clone)? Use the project path from the table above instead of the `~/` global path.
 
 ## Usage
 
@@ -78,7 +101,7 @@ The LLM is the flexible front end; `calc.py` is the deterministic substrate that
 `scripts/calc.py` is stdlib-only Python. Two subcommands, JSON on stdin, JSON on stdout.
 
 ```bash
-echo '{"params_b":70,"quant":"int4","queries_per_week":1000000,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989}}' \
+echo '{"params_b":70,"quant":"int4","queries_per_week":1000000,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","gpu":{"name":"H100 SXM 80GB","vram_gb":80,"usd_per_hr":2.90}}' \
   | python3 scripts/calc.py inference
 ```
 

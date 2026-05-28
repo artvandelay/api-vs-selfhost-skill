@@ -7,8 +7,9 @@ src/ft/ASSUMPTIONS.md §3 assumption 8 and 19.
 
 | name | vram_gb | bf16_tflops | gpus_per_node | notes |
 | --- | --- | --- | --- | --- |
-| H100 SXM 80GB | 80  | 989  | 8 | NVIDIA Hopper, datasheet peak no sparsity |
-| H200 SXM      | 141 | 989  | 8 | Same compute as H100, more HBM |
+| H100 SXM 80GB  | 80  | 989  | 8 | NVIDIA Hopper, datasheet peak no sparsity |
+| H100 PCIe 80GB | 80  | 756  | 8 | Hopper PCIe variant; lower clocks than SXM, no NVLink |
+| H200 SXM       | 141 | 989  | 8 | Same compute as H100, more HBM |
 | B200          | 192 | 2250 | 8 | NVIDIA Blackwell |
 | A100 80GB     | 80  | 312  | 8 | NVIDIA Ampere |
 | A100 40GB     | 40  | 312  | 8 | NVIDIA Ampere |
