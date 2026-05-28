@@ -41,7 +41,7 @@ Out of scope: pretraining from scratch, image/audio models, non-LLM workloads.
 ### Inference
 
 ```bash
-echo '{"params_b":70,"active_params_b":70,"quant":"int4","queries_per_week":1000000,"avg_tokens_per_query":800,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90,"bf16_tflops":989}}' | python3 scripts/calc.py inference
+echo '{"params_b":70,"quant":"int4","queries_per_week":1000000,"api_cost_per_query_usd":0.002,"traffic_pattern":"business","replicas":1,"gpu":{"name":"H100 80GB","vram_gb":80,"usd_per_hr":2.90}}' | python3 scripts/calc.py inference
 ```
 
 Optional inference inputs: `total_params_b` (MoE; drives VRAM), `replicas` (GPUs needed to serve volume; default 1), `hot_hours_per_week` (required for `cold_per_query`).

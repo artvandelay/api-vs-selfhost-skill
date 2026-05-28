@@ -9,16 +9,17 @@ self-describing `{"error", "field"}` JSON.
 
 | field | type | unit | required | notes |
 | --- | --- | --- | --- | --- |
-| `params_b` | float | billions | yes | total params (for VRAM) |
-| `active_params_b` | float | billions | no | for MoE; defaults to `params_b` |
-| `quant` | string | `fp16` / `int8` / `int4` | yes | |
+| `params_b` | float | billions | yes | total resident params — drives VRAM. For MoE, pass the full size (all experts load). |
+| `total_params_b` | float | billions | no | MoE total; VRAM is sized on `max(params_b, total_params_b)` |
+| `active_params_b` | float | billions | no | MoE active; validated `<= total` but does **not** change inference VRAM or cost |
+| `quant` | string | `fp16` / `int8` / `int4` | yes | lowercase |
 | `queries_per_week` | int | requests/wk | yes | |
-| `avg_tokens_per_query` | int | tokens | no | input + output combined |
-| `api_cost_per_query_usd` | float | USD | yes | blend input+output token rates if only $/1M is known |
+| `api_cost_per_query_usd` | float | USD | yes | the full blended per-query API cost (input+output token rates). Cost enters here — token counts are **not** a separate input. |
 | `traffic_pattern` | string | enum | yes | `uniform` / `business` / `business_hours` / `bursty` / `always_warm` / `cold_per_query` |
 | `hot_hours_per_week` | int | hrs/wk | only if `cold_per_query` | |
-| `gpu.name` | string | label | yes | from `GPU_SPECS.md` |
-| `gpu.vram_gb` | int | GB | yes | from `GPU_SPECS.md` |
+| `replicas` | float | GPUs | no | GPUs needed to serve the volume; default 1. Self-host cost scales linearly with this. |
+| `gpu.name` | string | label | no | from `GPU_SPECS.md` (label only) |
+| `gpu.vram_gb` | float | GB | yes | from `GPU_SPECS.md` |
 | `gpu.usd_per_hr` | float | USD/hr | yes | fetch live (Runpod/Lambda/Modal) |
 | `gpu.bf16_tflops` | int | TFLOPS | no | from `GPU_SPECS.md`; unused by inference |
 
