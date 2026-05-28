@@ -44,44 +44,77 @@ ALLOWED_TRAFFIC_PATTERNS = {
 }
 
 
-def _exit_bad(message, field):
-    print(json.dumps({"error": message, "field": field}))
+def _exit_bad(message, field, hint=None):
+    """Emit a structured, actionable error and exit 2.
+
+    `hint` tells the calling agent exactly how to recover so it can retry
+    without a human round-trip.
+    """
+    payload = {"error": message, "field": field}
+    if hint:
+        payload["hint"] = hint
+    print(json.dumps(payload))
     sys.exit(2)
 
 
-def _require(d, key):
+def _require(d, key, hint=None):
     if key not in d or d[key] is None:
-        _exit_bad(f"missing field {key}", key)
+        _exit_bad(
+            f"missing required field '{key}'",
+            key,
+            hint or f"add '{key}' to the JSON payload, then retry",
+        )
     return d[key]
 
 
 def _require_positive(d, key):
     value = _require(d, key)
-    if (
-        not isinstance(value, (int, float))
-        or isinstance(value, bool)
-        or not math.isfinite(value)
-        or value <= 0
-    ):
-        _exit_bad(f"{key} must be a positive finite number", key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _exit_bad(
+            f"'{key}' must be a positive number, got {type(value).__name__}",
+            key,
+            f"pass '{key}' as a bare JSON number (no quotes, commas, or units)",
+        )
+    if not math.isfinite(value):
+        _exit_bad(
+            f"'{key}' must be finite, got {value}",
+            key,
+            f"pass a finite positive number for '{key}' (not NaN/Infinity)",
+        )
+    if value <= 0:
+        _exit_bad(
+            f"'{key}' must be greater than 0, got {value}",
+            key,
+            f"pass a positive value for '{key}'",
+        )
     return float(value)
 
 
 def _require_numeric(d, key):
     value = _require(d, key)
-    if (
-        not isinstance(value, (int, float))
-        or isinstance(value, bool)
-        or not math.isfinite(value)
-    ):
-        _exit_bad(f"{key} must be a finite number", key)
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        _exit_bad(
+            f"'{key}' must be a number, got {type(value).__name__}",
+            key,
+            f"pass '{key}' as a bare JSON number (no quotes, commas, or units)",
+        )
+    if not math.isfinite(value):
+        _exit_bad(
+            f"'{key}' must be finite, got {value}",
+            key,
+            f"pass a finite number for '{key}' (not NaN/Infinity)",
+        )
     return float(value)
 
 
 def _require_non_negative(d, key):
     value = _require_numeric(d, key)
     if value < 0:
-        _exit_bad(f"{key} must be a non-negative finite number", key)
+        _exit_bad(
+            f"'{key}' must be 0 or greater, got {value}",
+            key,
+            f"pass a non-negative value for '{key}'",
+        )
     return value
 
 
@@ -99,20 +132,44 @@ def compute_inference(inp: dict) -> dict:
     gpu_vram_gb = _require_positive(gpu, "vram_gb")
     gpu_usd_per_hr = _require_positive(gpu, "usd_per_hr")
 
+    # How many GPU replicas it takes to serve the volume at the latency target.
+    # Default 1 assumes a single GPU saturates the load — fine for low/medium
+    # QPS, optimistic at high QPS. The agent should estimate this from
+    # throughput and pass it in; see SKILL.md.
+    if inp.get("replicas") is not None:
+        replicas = _require_positive(inp, "replicas")
+        replicas_defaulted = False
+    else:
+        replicas = 1.0
+        replicas_defaulted = True
+
+    # Inference VRAM is driven by *all resident weights*. For an MoE model
+    # every expert is loaded, so VRAM scales with TOTAL params, not active.
+    # Size on the largest declared count so an agent that puts the total in
+    # either `params_b` or `total_params_b` is never silently undercounted.
+    resident_params_b = params_b
+    if inp.get("total_params_b") is not None:
+        total_params_b = _require_positive(inp, "total_params_b")
+        resident_params_b = max(resident_params_b, total_params_b)
+    else:
+        total_params_b = params_b
+
     if inp.get("active_params_b") is not None:
-        active_params_b = inp.get("active_params_b")
-        total_params_b = inp.get("total_params_b", params_b)
-        if (
-            not isinstance(active_params_b, (int, float))
-            or isinstance(active_params_b, bool)
-            or not math.isfinite(active_params_b)
-        ):
-            _exit_bad("active_params_b must be a finite number", "active_params_b")
-        if float(active_params_b) > float(total_params_b):
-            _exit_bad("active_params_b cannot exceed total_params_b", "active_params_b")
+        active_params_b = _require_positive(inp, "active_params_b")
+        if active_params_b > total_params_b:
+            _exit_bad(
+                f"active_params_b ({active_params_b}) cannot exceed "
+                f"total_params_b ({total_params_b})",
+                "active_params_b",
+                "for MoE: active <= total; for dense omit active_params_b",
+            )
 
     if quant not in BYTES_PER_PARAM_INFERENCE:
-        raise ValueError(f"unknown quant {quant}")
+        _exit_bad(
+            f"unknown quant '{quant}'",
+            "quant",
+            "use one of: fp16, int8, int4 (lowercase)",
+        )
 
     if traffic_pattern not in ALLOWED_TRAFFIC_PATTERNS:
         _exit_bad(
@@ -121,7 +178,7 @@ def compute_inference(inp: dict) -> dict:
         )
 
     bytes_per_param = BYTES_PER_PARAM_INFERENCE[quant]
-    vram_needed_gb = params_b * bytes_per_param * VRAM_OVERHEAD_FACTOR
+    vram_needed_gb = resident_params_b * bytes_per_param * VRAM_OVERHEAD_FACTOR
     vram_headroom_gb = gpu_vram_gb - vram_needed_gb
     fits = vram_needed_gb <= gpu_vram_gb
 
@@ -132,19 +189,26 @@ def compute_inference(inp: dict) -> dict:
     else:
         raise ValueError(f"unknown traffic_pattern {traffic_pattern}")
 
-    selfhost_weekly_usd = billed_hours_per_week * gpu_usd_per_hr
+    selfhost_weekly_usd = billed_hours_per_week * gpu_usd_per_hr * replicas
     api_weekly_usd = queries_per_week * api_cost_per_query_usd
     weekly_savings_usd = api_weekly_usd - selfhost_weekly_usd
     savings_pct = (weekly_savings_usd / api_weekly_usd * 100.0) if api_weekly_usd > 0 else 0.0
+
+    if replicas_defaulted and queries_per_week >= 1_000_000:
+        warnings.append(
+            "High volume with replicas=1: self-host cost assumes one GPU "
+            "saturates this QPS. Estimate replicas from throughput and re-run "
+            "if one GPU can't serve the load."
+        )
 
     if not fits:
         warnings.append(
             f"Self-host infeasible: needs {vram_needed_gb:.1f} GB, GPU has {gpu_vram_gb} GB."
         )
         derivation = [
-            {"step": "vram_needed_gb", "formula": "params_b * bytes_per_param[quant] * 1.2", "value": vram_needed_gb},
+            {"step": "vram_needed_gb", "formula": "resident_params_b * bytes_per_param[quant] * 1.2 (weights only, excl. KV cache)", "value": vram_needed_gb},
             {"step": "billed_hours", "formula": "pattern -> hours/week", "value": billed_hours_per_week},
-            {"step": "selfhost_weekly_usd", "formula": "billed_hours * usd_per_hr", "value": 0},
+            {"step": "selfhost_weekly_usd", "formula": "billed_hours * usd_per_hr * replicas", "value": 0},
             {"step": "api_weekly_usd", "formula": "queries_per_week * api_cost_per_query_usd", "value": api_weekly_usd},
         ]
         return {
@@ -153,6 +217,7 @@ def compute_inference(inp: dict) -> dict:
             "vram_needed_gb": round(vram_needed_gb, 4),
             "vram_headroom_gb": round(vram_headroom_gb, 4),
             "billed_hours_per_week": billed_hours_per_week,
+            "replicas": replicas,
             "selfhost_weekly_usd": 0,
             "api_weekly_usd": round(api_weekly_usd, 4),
             "weekly_savings_usd": 0,
@@ -168,9 +233,10 @@ def compute_inference(inp: dict) -> dict:
         verdict = "api_wins"
 
     derivation = [
-        {"step": "vram_needed_gb", "formula": "params_b * bytes_per_param[quant] * 1.2", "value": vram_needed_gb},
+        {"step": "vram_needed_gb", "formula": "resident_params_b * bytes_per_param[quant] * 1.2 (weights only, excl. KV cache)", "value": vram_needed_gb},
         {"step": "billed_hours", "formula": "pattern -> hours/week", "value": billed_hours_per_week},
-        {"step": "selfhost_weekly_usd", "formula": "billed_hours * usd_per_hr", "value": selfhost_weekly_usd},
+        {"step": "replicas", "formula": "GPUs needed to serve volume (default 1)", "value": replicas},
+        {"step": "selfhost_weekly_usd", "formula": "billed_hours * usd_per_hr * replicas", "value": selfhost_weekly_usd},
         {"step": "api_weekly_usd", "formula": "queries_per_week * api_cost_per_query_usd", "value": api_weekly_usd},
     ]
 
@@ -180,6 +246,7 @@ def compute_inference(inp: dict) -> dict:
         "vram_needed_gb": round(vram_needed_gb, 4),
         "vram_headroom_gb": round(vram_headroom_gb, 4),
         "billed_hours_per_week": billed_hours_per_week,
+        "replicas": replicas,
         "selfhost_weekly_usd": round(selfhost_weekly_usd, 4),
         "api_weekly_usd": round(api_weekly_usd, 4),
         "weekly_savings_usd": round(weekly_savings_usd, 4),
@@ -221,7 +288,11 @@ def compute_finetune(inp: dict) -> dict:
         experiments_multiplier_in = 1.0
 
     if method not in FT_METHODS:
-        raise ValueError(f"unknown method {method}")
+        _exit_bad(
+            f"unknown method '{method}'",
+            "method",
+            "use one of: full, lora, qlora (lowercase)",
+        )
 
     m = FT_METHODS[method]
 
@@ -293,27 +364,51 @@ def compute_finetune(inp: dict) -> dict:
 
 def main():
     if len(sys.argv) < 2:
-        print(json.dumps({"error": "missing subcommand", "field": None}))
-        sys.exit(2)
+        _exit_bad(
+            "missing subcommand",
+            None,
+            "call as: python3 scripts/calc.py inference|finetune  (JSON on stdin)",
+        )
     sub = sys.argv[1]
     if sub not in ("inference", "finetune"):
-        print(json.dumps({"error": f"unknown subcommand {sub}", "field": None}))
-        sys.exit(2)
+        _exit_bad(
+            f"unknown subcommand '{sub}'",
+            None,
+            "use 'inference' or 'finetune'",
+        )
+    raw = sys.stdin.read()
+    if not raw.strip():
+        _exit_bad(
+            "no input on stdin",
+            None,
+            "pipe a JSON object to stdin, e.g. echo '{...}' | python3 scripts/calc.py "
+            + sub,
+        )
     try:
-        inp = json.load(sys.stdin)
+        inp = json.loads(raw)
     except json.JSONDecodeError as e:
-        print(json.dumps({"error": f"invalid JSON: {e}", "field": None}))
-        sys.exit(2)
+        _exit_bad(
+            f"invalid JSON: {e}",
+            None,
+            "send a single well-formed JSON object (not double-encoded, no trailing commas)",
+        )
+    if not isinstance(inp, dict):
+        _exit_bad(
+            f"input must be a JSON object, got {type(inp).__name__}",
+            None,
+            'send an object like {"params_b": 70, ...}, not a bare value or array',
+        )
     try:
         if sub == "inference":
             result = compute_inference(inp)
         else:
             result = compute_finetune(inp)
-    except ValueError as e:
-        print(json.dumps({"error": str(e), "field": None}))
-        sys.exit(2)
-    except Exception as e:
-        print(json.dumps({"error": str(e), "field": None}))
+    except Exception as e:  # pragma: no cover - last-resort guard
+        print(json.dumps({
+            "error": f"internal error: {type(e).__name__}: {e}",
+            "field": None,
+            "hint": "this is a bug in calc.py — please report it with the input payload",
+        }))
         sys.exit(1)
     print(json.dumps(result))
     sys.exit(0)

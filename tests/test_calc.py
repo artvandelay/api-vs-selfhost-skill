@@ -97,7 +97,8 @@ class TestErrorPaths(unittest.TestCase):
     def test_missing_field(self):
         rc, r = run("inference", {"params_b": 70})
         self.assertEqual(rc, 2)
-        self.assertIn("missing field", r["error"])
+        self.assertIn("missing required field", r["error"])
+        self.assertIn("hint", r)
 
     def test_unknown_quant(self):
         rc, r = run("inference", {
@@ -246,9 +247,155 @@ class TestWarnings(unittest.TestCase):
         self.assertTrue(any("experiments_multiplier 0.5 clamped to 1.0" in w for w in r["warnings"]))
 
     def test_no_warnings_on_clean_input(self):
-        rc, r = run("inference", INFERENCE_BASE)
+        payload = dict(INFERENCE_BASE)
+        payload["queries_per_week"] = 100_000  # below high-volume replicas nudge
+        rc, r = run("inference", payload)
         self.assertEqual(rc, 0)
         self.assertEqual(r["warnings"], [])
+
+
+class TestInputObjectGuard(unittest.TestCase):
+    """Non-object JSON must exit 2 cleanly, never leak an exit-1 exception."""
+
+    def test_scalar_int(self):
+        rc, r = run("inference", 42)
+        self.assertEqual(rc, 2)
+        self.assertIn("must be a JSON object", r["error"])
+        self.assertIsNone(r["field"])
+
+    def test_json_null(self):
+        rc, r = run("inference", None)
+        self.assertEqual(rc, 2)
+        self.assertIn("must be a JSON object", r["error"])
+
+    def test_scalar_string(self):
+        rc, r = run("inference", "hello")
+        self.assertEqual(rc, 2)
+        self.assertIn("must be a JSON object", r["error"])
+
+    def test_array(self):
+        rc, r = run("finetune", [1, 2, 3])
+        self.assertEqual(rc, 2)
+        self.assertIn("must be a JSON object", r["error"])
+
+    def test_finetune_scalar(self):
+        rc, r = run("finetune", 123)
+        self.assertEqual(rc, 2)
+        self.assertIn("must be a JSON object", r["error"])
+
+
+class TestErrorHints(unittest.TestCase):
+    """Every validation error should carry an actionable hint."""
+
+    def test_missing_field_has_hint(self):
+        rc, r = run("inference", {"params_b": 70})
+        self.assertEqual(rc, 2)
+        self.assertIn("hint", r)
+
+    def test_string_number_has_hint(self):
+        payload = dict(INFERENCE_BASE)
+        payload["queries_per_week"] = "100k"
+        rc, r = run("inference", payload)
+        self.assertEqual(rc, 2)
+        self.assertIn("hint", r)
+        self.assertEqual(r["field"], "queries_per_week")
+
+
+class TestEnumFieldConsistency(unittest.TestCase):
+    """quant/method/subcommand errors must name a fixable field, exit 2."""
+
+    def test_unknown_quant_names_field(self):
+        payload = dict(INFERENCE_BASE)
+        payload["quant"] = "INT4"
+        rc, r = run("inference", payload)
+        self.assertEqual(rc, 2)
+        self.assertEqual(r["field"], "quant")
+        self.assertIn("hint", r)
+
+    def test_unknown_method_names_field(self):
+        payload = dict(FINETUNE_BASE)
+        payload["method"] = "DPO"
+        rc, r = run("finetune", payload)
+        self.assertEqual(rc, 2)
+        self.assertEqual(r["field"], "method")
+        self.assertIn("hint", r)
+
+
+class TestMoEInferenceVram(unittest.TestCase):
+    """Inference VRAM must scale with TOTAL resident params, not active."""
+
+    def test_total_drives_vram(self):
+        # Qwen3-235B-A22B int4: total 235B -> ~141GB, must NOT fit on 80GB.
+        rc, r = run("inference", {
+            "params_b": 22, "total_params_b": 235, "active_params_b": 22,
+            "quant": "int4", "queries_per_week": 100,
+            "api_cost_per_query_usd": 0.01, "traffic_pattern": "uniform",
+            "gpu": {"vram_gb": 80, "usd_per_hr": 2.9},
+        })
+        self.assertEqual(rc, 0)
+        self.assertAlmostEqual(r["vram_needed_gb"], 141.0, places=1)
+        self.assertFalse(r["fits"])
+        self.assertEqual(r["verdict"], "infeasible")
+
+    def test_active_cannot_exceed_total(self):
+        rc, r = run("inference", {
+            "params_b": 22, "total_params_b": 100, "active_params_b": 150,
+            "quant": "int4", "queries_per_week": 100,
+            "api_cost_per_query_usd": 0.01, "traffic_pattern": "uniform",
+            "gpu": {"vram_gb": 80, "usd_per_hr": 2.9},
+        })
+        self.assertEqual(rc, 2)
+        self.assertEqual(r["field"], "active_params_b")
+
+
+class TestReplicas(unittest.TestCase):
+    def test_replicas_multiply_selfhost_cost(self):
+        base = {
+            "params_b": 7, "quant": "int4", "queries_per_week": 100,
+            "api_cost_per_query_usd": 0.01, "traffic_pattern": "uniform",
+            "gpu": {"vram_gb": 80, "usd_per_hr": 2.9},
+        }
+        rc1, r1 = run("inference", base)
+        rc4, r4 = run("inference", dict(base, replicas=4))
+        self.assertEqual(rc1, 0)
+        self.assertEqual(rc4, 0)
+        self.assertAlmostEqual(r4["selfhost_weekly_usd"], r1["selfhost_weekly_usd"] * 4, places=2)
+        self.assertEqual(r4["replicas"], 4.0)
+
+    def test_default_replicas_is_one(self):
+        rc, r = run("inference", {
+            "params_b": 7, "quant": "int4", "queries_per_week": 100,
+            "api_cost_per_query_usd": 0.01, "traffic_pattern": "uniform",
+            "gpu": {"vram_gb": 80, "usd_per_hr": 2.9},
+        })
+        self.assertEqual(r["replicas"], 1.0)
+
+    def test_high_volume_default_replicas_warns(self):
+        rc, r = run("inference", {
+            "params_b": 7, "quant": "int4", "queries_per_week": 2_000_000,
+            "api_cost_per_query_usd": 0.01, "traffic_pattern": "uniform",
+            "gpu": {"vram_gb": 80, "usd_per_hr": 2.9},
+        })
+        self.assertEqual(rc, 0)
+        self.assertTrue(any("replicas=1" in w for w in r["warnings"]))
+
+    def test_explicit_replicas_no_warning(self):
+        rc, r = run("inference", {
+            "params_b": 7, "quant": "int4", "queries_per_week": 2_000_000,
+            "api_cost_per_query_usd": 0.01, "traffic_pattern": "uniform",
+            "replicas": 3, "gpu": {"vram_gb": 80, "usd_per_hr": 2.9},
+        })
+        self.assertEqual(rc, 0)
+        self.assertEqual(r["warnings"], [])
+
+    def test_invalid_replicas_rejected(self):
+        rc, r = run("inference", {
+            "params_b": 7, "quant": "int4", "queries_per_week": 100,
+            "api_cost_per_query_usd": 0.01, "traffic_pattern": "uniform",
+            "replicas": 0, "gpu": {"vram_gb": 80, "usd_per_hr": 2.9},
+        })
+        self.assertEqual(rc, 2)
+        self.assertEqual(r["field"], "replicas")
 
 
 if __name__ == "__main__":
