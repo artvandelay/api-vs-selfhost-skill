@@ -62,20 +62,23 @@ Prefer a project-scoped install (so the skill travels with one repo and your tea
 ## Usage
 
 ```text
-Our OpenAI bill is killing us. We do ~1M queries/week at ~1.5k tokens each
-on GPT-5.4. Should we self-host?
+Our OpenAI bill is killing us. We're on GPT-5.4 for an internal support
+copilot — ~350k queries/week (weekday business hours), ~1.5k tokens each.
+Should we self-host?
 ```
 
-The agent will fetch live prices, run the engine, and return something like:
+The agent fetches live prices, runs the engine across a few scenarios, and returns something like:
 
-| traffic   | quality   | GPU              | $/hr  | fits | self $/wk | API $/wk  | savings | verdict        |
-|-----------|-----------|------------------|-------|------|-----------|-----------|---------|----------------|
-| business  | 70B INT4  | H100 PCIe 80GB   | $2.89 | yes  | $144.50   | $3,937.50 | 96.3%   | selfhost_wins  |
-| business  | 32B INT4  | L40S 48GB        | $0.86 | yes  | $43.00    | $3,937.50 | 98.9%   | selfhost_wins  |
-| uniform   | 70B INT4  | H100 PCIe 80GB   | $2.89 | yes  | $485.52   | $3,937.50 | 87.7%   | selfhost_wins  |
-| bursty    | 70B INT4  | H100 PCIe 80GB   | $2.89 | yes  | $57.80    | $3,937.50 | 98.5%   | selfhost_wins  |
+| traffic   | open model | GPU              | $/hr  | fits | self $/wk | API $/wk  | savings | verdict        |
+|-----------|------------|------------------|-------|------|-----------|-----------|---------|----------------|
+| business  | 70B INT4   | H100 PCIe 80GB   | $2.89 | yes  | $144.50   | $3,937.50 | 96.3%   | selfhost_wins  |
+| business  | 32B INT4   | L40S 48GB        | $0.86 | yes  | $43.00    | $3,937.50 | 98.9%   | selfhost_wins  |
+| uniform   | 70B INT4   | H100 PCIe 80GB   | $2.89 | yes  | $485.52   | $3,937.50 | 87.7%   | selfhost_wins  |
+| bursty    | 70B INT4   | H100 PCIe 80GB   | $2.89 | yes  | $57.80    | $3,937.50 | 98.5%   | selfhost_wins  |
 
-Full transcript: [`examples/openai-bill-too-high.md`](examples/openai-bill-too-high.md).
+> `self $/wk` is **GPU rental only**, assuming one replica saturates the load — the agent reports the caveats (ops cost, KV-cache headroom, quality gap, replica count at higher volume) alongside every verdict. See [Limitations](#limitations).
+
+Full transcript — including the agent flagging operational cost and a quality check before recommending: [`examples/openai-bill-too-high.md`](examples/openai-bill-too-high.md).
 
 ## How it works
 
@@ -89,12 +92,24 @@ flowchart LR
 ```
 
 1. **Extract** — scan the user message, open files, and attachments for volume, model, traffic shape.
-2. **Fetch** — live GPU prices (Runpod / Lambda / Modal), API prices (models.dev), quality Elo (lmarena.ai).
+2. **Fetch** — live GPU prices (Runpod / Lambda / Modal), API prices (models.dev, with vendor-page fallback if it's down), quality Elo (lmarena.ai). If no source is reachable, the agent asks for numbers rather than guessing.
 3. **Clarify** — ask if volume, model, or spend are missing.
 4. **Calculate** — `python3 scripts/calc.py inference | finetune` with JSON on stdin.
 5. **Report** — verdict, cost table, assumptions with sources, what would flip the answer.
 
 The LLM is the flexible front end; `calc.py` is the deterministic substrate that keeps it from hallucinating prices or VRAM math. [Code as Agent Harness](https://arxiv.org/abs/2605.18747).
+
+## Limitations
+
+A fast, directional estimate — **not a quote**. The engine models only what it can compute deterministically and the skill instructs the agent to flag the rest. The dollar figures:
+
+- **Are GPU rental only.** `selfhost_weekly_usd` excludes serving infra, autoscaling, monitoring, on-call, and engineering time — often the deciding cost for a small team.
+- **Assume one replica.** Self-host cost assumes a single GPU saturates your volume. Above modest QPS you need more; pass `replicas` (or let the agent estimate it) or the savings read optimistic. The engine warns when volume is high and replicas is left at 1.
+- **Size VRAM on weights only.** `vram_needed_gb` excludes the KV cache, which grows with context length × batch and can dominate long-context / high-concurrency serving. "Fits" means the weights fit — leave headroom.
+- **Don't measure quality.** A cheaper open model may not match the API model on your task. The agent flags large Elo gaps; only your own eval set settles it.
+- **Are point-in-time.** Only as accurate as the prices fetched at that moment (cited with source + timestamp).
+
+Full math, constants, and calibration: [sister-repo assumptions](https://github.com/artvandelay/should-i-self-host-llm/blob/main/src/ft/ASSUMPTIONS.md).
 
 ## Engine
 
